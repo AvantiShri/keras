@@ -32,7 +32,8 @@ class GluConv1D(Layer):
                  bias_constraint=None,
                  **kwargs):
         super(GluConv1D, self).__init__(**kwargs)
-        self.rank = 1
+        rank = 1
+        self.rank = rank
         self.filters = filters
         self.kernel_size = conv_utils.normalize_tuple(kernel_size, rank, 'kernel_size')
         self.strides = conv_utils.normalize_tuple(strides, rank, 'strides')
@@ -117,7 +118,7 @@ class GluConv1D(Layer):
                 self.biasB,
                 data_format=self.data_format) 
 
-        return K.sigmoid(gate_outputs)*(K.relu(signal_outputs)+1)
+        return K.sigmoid(gate_outputs)*K.relu(signal_outputs)
 
     #copied from _Conv
     def compute_output_shape(self, input_shape):
@@ -163,5 +164,5 @@ class GluConv1D(Layer):
             'kernel_constraint': constraints.serialize(self.kernel_constraint),
             'bias_constraint': constraints.serialize(self.bias_constraint)
         }
-        base_config = super(_Conv, self).get_config()
+        base_config = super(GluConv1D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
