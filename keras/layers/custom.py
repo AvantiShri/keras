@@ -12,6 +12,67 @@ from ..engine.base_layer import InputSpec
 from ..utils import conv_utils
 
 
+class SwitchReLU(Layer):
+    """
+    """
+
+    def __init__(self, unshared_axes,
+                 alpha_initializer='zeros',
+                 sigmoid_multiplier=10,
+                 alpha_regularizer=None,
+                 alpha_constraint=None,
+                 **kwargs):
+        super(SwitchReLU, self).__init__(**kwargs)
+        self.supports_masking = True
+        self.sigmoid_multiplier = sigmoid_multiplier
+        self.alpha_initializer = initializers.get(alpha_initializer)
+        self.alpha_regularizer = regularizers.get(alpha_regularizer)
+        self.alpha_constraint = constraints.get(alpha_constraint)
+        if not isinstance(unshared_axes, (list, tuple)):
+            self.unshared_axes = [unshared_axes]
+        else:
+            self.unshared_axes = list(unshared_axes)
+
+    def build(self, input_shape):
+        param_shape = [1 for x in range(len(input_shape)-1)] #drop batch axis
+        self.param_broadcast = [True] * len(param_shape)
+        for i in self.unshared_axes:
+            assert i!=0, "batch axis (0) invalid as an unshared axis"
+            pos_i = i if i > 0 else (len(input_shape)+i)
+            param_shape[pos_i - 1] = input_shape[pos_i]
+            self.param_broadcast[pos_i - 1] = False
+        self.alpha = self.add_weight(shape=param_shape,
+                                     name='alpha',
+                                     initializer=self.alpha_initializer,
+                                     regularizer=self.alpha_regularizer,
+                                     constraint=self.alpha_constraint)
+        # Set input spec
+        axes = {}
+        for i in self.unshared_axes:
+            pos_i = i if i > 0 else (len(input_shape)+i)
+            axes[pos_i] = input_shape[pos_i]
+        self.input_spec = InputSpec(ndim=len(input_shape), axes=axes)
+        self.built = True
+
+    def call(self, inputs, mask=None):
+        sigmoid_input = self.sigmoid_multiplier*(inputs + self.alpha)
+        return K.relu(inputs)*K.sigmoid(sigmoid_input)
+         
+    def get_config(self):
+        config = {
+            'sigmoid_multiplier': self.sigmoid_multiplier,
+            'alpha_initializer': initializers.serialize(self.alpha_initializer),
+            'alpha_regularizer': regularizers.serialize(self.alpha_regularizer),
+            'alpha_constraint': constraints.serialize(self.alpha_constraint),
+            'unshared_axes': self.unshared_axes
+        }
+        base_config = super(SwitchReLU, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
 class GluConv1D(Layer):
     """
     """
@@ -30,6 +91,7 @@ class GluConv1D(Layer):
                  activity_regularizer=None,
                  kernel_constraint=None,
                  bias_constraint=None,
+                 apply_relu_to_linear_bit=False,
                  **kwargs):
         super(GluConv1D, self).__init__(**kwargs)
         rank = 1
@@ -48,6 +110,7 @@ class GluConv1D(Layer):
         self.activity_regularizer = regularizers.get(activity_regularizer)
         self.kernel_constraint = constraints.get(kernel_constraint)
         self.bias_constraint = constraints.get(bias_constraint)
+        self.apply_relu_to_linear_bit = apply_relu_to_linear_bit
         self.input_spec = InputSpec(ndim=3)
 
     def build(self, input_shape):
@@ -118,7 +181,10 @@ class GluConv1D(Layer):
                 self.biasB,
                 data_format=self.data_format) 
 
-        return K.sigmoid(gate_outputs)*K.relu(signal_outputs)
+        if (self.apply_relu_to_linear_bit):
+            return K.sigmoid(gate_outputs)*K.relu(signal_outputs)
+        else:
+            return K.sigmoid(gate_outputs)*signal_outputs
 
     #copied from _Conv
     def compute_output_shape(self, input_shape):
@@ -162,7 +228,8 @@ class GluConv1D(Layer):
             'bias_regularizer': regularizers.serialize(self.bias_regularizer),
             'activity_regularizer': regularizers.serialize(self.activity_regularizer),
             'kernel_constraint': constraints.serialize(self.kernel_constraint),
-            'bias_constraint': constraints.serialize(self.bias_constraint)
+            'bias_constraint': constraints.serialize(self.bias_constraint),
+            'apply_relu_to_linear_bit': self.apply_relu_to_linear_bit
         }
         base_config = super(GluConv1D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
