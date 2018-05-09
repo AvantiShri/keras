@@ -84,6 +84,36 @@ class MaxPooling1D(_Pooling1D):
         return output
 
 
+class MaxPoolFilter1D(Layer):
+
+    def __init__(self, pool_size, **kwargs):
+        super(MaxPoolFilter1D, self).__init__(**kwargs)
+        strides = 1
+        self.pool_size = conv_utils.normalize_tuple(pool_size, 1, 'pool_size')
+        self.strides = conv_utils.normalize_tuple(strides, 1, 'strides')
+        self.padding = conv_utils.normalize_padding('same')
+        self.input_spec = InputSpec(ndim=3)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+    def call(self, inputs):
+        expanded_inputs = K.expand_dims(inputs, 2)   # add dummy last dimension
+        output = K.pool2d(expanded_inputs,
+                          self.pool_size + (1,),
+                          self.strides + (1,),
+                          self.padding,
+                          'channels_last',
+                          pool_mode='max')
+        output = K.squeeze(output, 2)  # remove dummy last dimension
+        return inputs*K.cast(K.equal(inputs,output), 'float32')
+
+    def get_config(self):
+        config = {'pool_size': self.pool_size}
+        base_config = super(MaxPoolFilter1D, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
 class AveragePooling1D(_Pooling1D):
     """Average pooling for temporal data.
 
@@ -111,6 +141,37 @@ class AveragePooling1D(_Pooling1D):
                           padding, data_format):
         output = K.pool2d(inputs, pool_size, strides,
                           padding, data_format, pool_mode='avg')
+        return output
+
+
+class SumPooling1D(_Pooling1D):
+    """Average pooling for temporal data.
+
+    # Arguments
+        pool_size: Integer, size of the average pooling windows.
+        strides: Integer, or None. Factor by which to downscale.
+            E.g. 2 will halve the input.
+            If None, it will default to `pool_size`.
+        padding: One of `"valid"` or `"same"` (case-insensitive).
+
+    # Input shape
+        3D tensor with shape: `(batch_size, steps, features)`.
+
+    # Output shape
+        3D tensor with shape: `(batch_size, downsampled_steps, features)`.
+    """
+
+    def __init__(self, pool_size=2, strides=None,
+                 padding='valid', **kwargs):
+        self.base_pool_size = pool_size
+        super(SumPooling1D, self).__init__(pool_size, strides,
+                                               padding, **kwargs)
+
+    def _pooling_function(self, inputs, pool_size, strides,
+                          padding, data_format):
+        output = (K.pool2d(inputs, pool_size, strides,
+                          padding, data_format, pool_mode='avg')
+                  *self.base_pool_size)
         return output
 
 
