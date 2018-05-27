@@ -317,6 +317,51 @@ class Minimum(_Merge):
         return output
 
 
+class Grad(_Merge):
+    """Layer that computes grad of sum of one layer w.r.t the other.
+
+    It takes as input a list of two tensors, first is the output
+     tensor, second is the input tensor. Returns a tensor that
+     has the shape of the input tensor
+    # Arguments
+        **kwargs: standard layer keyword arguments.
+    """
+
+    def __init__(self, activity_regularizer=None, **kwargs):
+        super(Grad, self).__init__(**kwargs)
+        self.activity_regularizer = activity_regularizer
+        self.supports_masking = False
+        self._reshape_required = False
+
+    def build(self, input_shape):
+        # Used purely for shape validation.
+        if not isinstance(input_shape, list) or len(input_shape) != 2:
+            raise ValueError('A `Grad` layer should be called '
+                             'on a list of 2 inputs')
+
+    def _merge_function(self, inputs):
+        grads = K.gradients(K.sum(inputs[0]), inputs[1])[0]
+        print(grads)
+        return grads
+
+    def compute_output_shape(self, input_shape):
+        if not isinstance(input_shape, list):
+            raise ValueError('A `Grad` layer should be called '
+                             'on a list of 2 inputs.')
+        return input_shape[1]
+
+    def compute_mask(self, inputs, mask=None):
+        return None
+        #if mask is None:
+        #    return None
+        #raise NotImplementedError()
+
+    def get_config(self):
+        config = {}
+        base_config = super(Grad, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
 class Concatenate(_Merge):
     """Layer that concatenates a list of inputs.
 
